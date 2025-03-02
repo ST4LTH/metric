@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut join_set: JoinSet<Option<(String, Vec<String>)>> = JoinSet::new();
     let max_concurrency = 200;
 
-    for (_host, server_data) in servers.servers {
+    'outer: for (_host, server_data) in servers.servers {
         if server_data.connectEndPoints.is_empty() {
             println!("No endpoints available for this server.");
             continue;
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 while let Some(result) = join_set.join_next().await {
                     process_result(result, &mut resource_counts, &mut stop);
                     if stop >= 10 {
-                        break;
+                        break 'outer;
                     }
                 }
             }
