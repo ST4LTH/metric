@@ -102,7 +102,7 @@ export async function getServerInfo(servers: serversDataType) {
       chunk.map(async ({ endpoint, serverData }) => {
         if (requestCount >= maxRequests) return;
         requestCount++;
-        console.log(requestCount)
+        
         try {
           const response = await Promise.race([
             fetcher.fetch(`http://${endpoint}/info.json`),
@@ -121,7 +121,7 @@ export async function getServerInfo(servers: serversDataType) {
             });
           }
         } catch (error) {
-/*           console.error(`Error fetching ${endpoint}:`, error); */
+          console.log(`Error fetching ${endpoint}:`);
         }
       })
     );

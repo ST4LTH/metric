@@ -91,7 +91,6 @@ function getServerInfo(servers) {
                 if (requestCount >= maxRequests)
                     return;
                 requestCount++;
-                console.log(requestCount);
                 try {
                     const response = yield Promise.race([
                         fetcher_1.fetcher.fetch(`http://${endpoint}/info.json`),
@@ -113,7 +112,7 @@ function getServerInfo(servers) {
                     }
                 }
                 catch (error) {
-                    /*           console.error(`Error fetching ${endpoint}:`, error); */
+                    console.log(`Error fetching ${endpoint}:`);
                 }
             })));
         }
