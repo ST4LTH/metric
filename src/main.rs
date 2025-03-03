@@ -3,9 +3,15 @@ mod models;
 use std::fs;
 use serde_json;
 use models::server::Servers;
+use models::server::Server;
 use models::server::FetchedServer;
 use std::collections::HashMap;
 use tokio::task::JoinSet;
+
+pub struct ResourceCountsType {
+    pub servers: u32,
+    pub players: u32
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,12 +20,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let servers: Servers = serde_json::from_str(&data)?;
 
     let mut stop = 0;
-    let mut resource_counts: HashMap<String, usize> = HashMap::new();
+    let mut resource_counts: HashMap<String, ResourceCountsType> = HashMap::new();
 
     let mut join_set: JoinSet<Option<(String, Vec<String>)>> = JoinSet::new();
-    let max_concurrency = 200;
+    let max_concurrency = 10;
 
-    'outer: for (_host, server_data) in servers.servers {
+    'crone: for (_host, server_data) in servers.servers {
         if server_data.connectEndPoints.is_empty() {
             println!("No endpoints available for this server.");
             continue;
@@ -34,9 +40,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if join_set.len() >= max_concurrency {
                 while let Some(result) = join_set.join_next().await {
-                    process_result(result, &mut resource_counts, &mut stop);
-                    if stop >= 10 {
-                        break 'outer;
+                    process_result(result, &mut resource_counts, &mut stop, &server_data);
+                    if stop >= 10000 {
+                        break 'crone;
                     }
                 }
             }
@@ -70,20 +76,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    while let Some(result) = join_set.join_next().await {
-        process_result(result, &mut resource_counts, &mut stop);
-        if stop >= 10 {
-            break;
-        }
-    }
+    let mut resource_vec: Vec<(&String, &ResourceCountsType)> = resource_counts.iter().collect();
 
-    let mut resource_vec: Vec<(&String, &usize)> = resource_counts.iter().collect();
-
-    resource_vec.sort_by(|a, b| b.1.cmp(a.1));
-
-    println!("\nTop 10 Most Used Resources:");
-    for (i, (resource, count)) in resource_vec.iter().take(10).enumerate() {
-        println!("{}. {} - Count: {}", i + 1, resource, count);
+    resource_vec.sort_by(|a, b| b.1.servers.cmp(&a.1.servers));
+    
+    println!("\nTop 10 Most Used Resources by Servers:");
+    for (i, (resource, counts)) in resource_vec.iter().take(10).enumerate() {
+        println!(
+            "{}. {} - Servers: {}, Players: {}",
+            i + 1, resource, counts.servers, counts.players
+        );
     }
 
     Ok(())
@@ -91,15 +93,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn process_result(
     result: Result<Option<(String, Vec<String>)>, tokio::task::JoinError>,
-    resource_counts: &mut HashMap<String, usize>,
+    resource_counts: &mut HashMap<String, ResourceCountsType>,
     stop: &mut usize,
+    server_data: &Server,
 ) {
     if let Ok(Some((url, resources))) = result {
         for resource in resources {
-            *resource_counts.entry(resource.clone()).or_insert(0) += 1;
+            let entry = resource_counts.entry(resource.clone()).or_insert(ResourceCountsType { servers: 0, players: 0 });
+            entry.servers += 1;
+
+            if let Some(client_count) = server_data.clients {
+                entry.players += client_count;
+            }
         }
 
         *stop += 1;
-        println!("Count: {}", stop);
+        println!("Processed {} servers.", stop);
     }
 }
