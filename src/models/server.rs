@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub struct ResourceCountsType {
+    pub servers: u32,
+    pub players: u32
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FetchedServer {
     pub enhancedHostSupport: Option<bool>,
