@@ -7,6 +7,9 @@ use models::server::Server;
 use models::server::FetchedServer;
 use std::collections::HashMap;
 use tokio::task::JoinSet;
+use std::time::{Instant, Duration}; 
+use humantime::format_duration;
+use reqwest::Client;
 
 pub struct ResourceCountsType {
     pub servers: u32,
@@ -15,6 +18,8 @@ pub struct ResourceCountsType {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
+
     let data = fs::read_to_string("./servers.json")?;
 
     let servers: Servers = serde_json::from_str(&data)?;
@@ -23,7 +28,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut resource_counts: HashMap<String, ResourceCountsType> = HashMap::new();
 
     let mut join_set: JoinSet<Option<(String, Vec<String>)>> = JoinSet::new();
-    let max_concurrency = 10;
+    let max_concurrency = 200; // times fetching at once
+    let client = Client::builder()
+        .timeout(Duration::from_secs(2)) // Timeout
+        .build()?;
 
     'crone: for (_host, server_data) in servers.servers {
         if server_data.connectEndPoints.is_empty() {
@@ -41,14 +49,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if join_set.len() >= max_concurrency {
                 while let Some(result) = join_set.join_next().await {
                     process_result(result, &mut resource_counts, &mut stop, &server_data);
-                    if stop >= 10000 {
-                        break 'crone;
-                    }
                 }
             }
 
+            let client_clone = client.clone();
             join_set.spawn(async move {
-                match reqwest::get(&url).await {
+                match client_clone.get(&url).send().await {
                     Ok(response) => {
                         if response.status().is_success() {
                             match response.json::<FetchedServer>().await {
@@ -87,6 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             i + 1, resource, counts.servers, counts.players
         );
     }
+
+    let elapsed_time = start_time.elapsed(); 
+    println!("Time taken to fetch and print top 10 servers: {}", format_duration(elapsed_time));
 
     Ok(())
 }

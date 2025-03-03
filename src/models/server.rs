@@ -4,7 +4,7 @@ use std::collections::HashMap;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FetchedServer {
     pub enhancedHostSupport: Option<bool>,
-    #[serde(rename = "ignore_icon")] // Rename to exclude from deserialization
+    #[serde(rename = "ignore_icon")]
     pub icon: Option<i64>,
     pub requestSteamTicket: Option<String>,
     pub resources: Vec<String>,
