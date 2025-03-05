@@ -1,17 +1,15 @@
 mod models;
 mod components;
 
-use serde_json;
+use serde_json::{self, json};
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use models::server::{Servers, ResourceCountsType};
+use models::server::{FetchedServers, ResourceData};
 use std::fs;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::time::Instant; 
 use humantime::format_duration;
 use components::fetcher::Fetcher;
-
-
+use components::sorter::Sorter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,57 +17,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let data = fs::read_to_string("./servers.json")?;
 
-    let servers: Servers = serde_json::from_str(&data)?;
+    let mut servers: FetchedServers = Fetcher::fetch_identifiers(serde_json::from_str(&data)?).await;
 
-    let mut resource_counts: HashMap<String, ResourceCountsType> = HashMap::new();
+    Sorter::process_resources(&mut servers);
 
-    Fetcher::fetch(servers, &mut resource_counts).await?;
+    let servers_shared = Arc::new(Mutex::new(servers));
 
-    let mut resource_vec: Vec<(&String, &ResourceCountsType)> = resource_counts.iter().collect();
+    let bind = "127.0.0.1:8080";
 
-    resource_vec.sort_by(|a, b| b.1.servers.cmp(&a.1.servers));
-    
-    println!("\nTop 10 Most Used Resources by Servers:");
-    for (i, (resource, counts)) in resource_vec.iter().take(10).enumerate() {
-        println!(
-            "{}. {} - Servers: {}, Players: {}",
-            i + 1, resource, counts.servers, counts.players
-        );
-    }
-
-    let elapsed_time = start_time.elapsed(); 
-    println!("Time taken to fetch and print top 10 servers: {}", format_duration(elapsed_time));
-
-    let resource_counts_shared = Arc::new(Mutex::new(resource_counts));
+    let elapsed_time = start_time.elapsed();
+    println!("API startup completed in: {}", format_duration(elapsed_time));
+    println!("API running on: http://{}/", bind);
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(resource_counts_shared.clone()))
+            .app_data(web::Data::new(servers_shared.clone()))
             .route("/top-resources", web::get().to(get_top_resources))
+            .route("/resource/{resourceId}", web::get().to(get_resource_by_id))
     })
-    .bind("127.0.0.1:8080")?
+    .bind(bind)?
     .run()
     .await?;
 
     Ok(())
 }
 
-async fn get_top_resources(
-    resource_counts: web::Data<Arc<Mutex<HashMap<String, ResourceCountsType>>>>,
+async fn get_resource_by_id(
+    resource_id: web::Path<String>, 
+    servers_data: web::Data<Arc<Mutex<FetchedServers>>>,
 ) -> impl Responder {
-    let resource_counts = resource_counts.lock().unwrap();
+    let resource_id = resource_id.into_inner();
 
-    let mut resource_vec: Vec<(&String, &ResourceCountsType)> = resource_counts.iter().collect();
-    resource_vec.sort_by(|a, b| b.1.servers.cmp(&a.1.servers));
+    let servers = servers_data.lock().unwrap();
+
+    if let Some(resource_data) = servers.resources.get(&resource_id) {
+        let response = json!({
+            "resource": resource_id,
+            "servers": resource_data.servers.len(),
+            "players": resource_data.players,
+        });
+        HttpResponse::Ok().json(response)
+    } else {
+        HttpResponse::NotFound().body(format!("Resource '{}' not found", resource_id))
+    }
+}
+
+async fn get_top_resources(
+    servers_data: web::Data<Arc<Mutex<FetchedServers>>>,
+) -> impl Responder {
+    let servers = servers_data.lock().unwrap();
+    let mut resource_vec: Vec<(&String, &ResourceData)> = servers.resources.iter().collect();
+
+    resource_vec.sort_by(|a, b| b.1.servers.len().cmp(&a.1.servers.len()));
 
     let top_resources: Vec<_> = resource_vec
         .iter()
         .take(10)
-        .map(|(resource, counts)| {
-            serde_json::json!({
+        .map(|(resource, data)| {
+            json!({
                 "resource": resource,
-                "servers": counts.servers,
-                "players": counts.players,
+                "servers": data.servers.len(),
+                "players": data.players,
             })
         })
         .collect();

@@ -1,12 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub struct ResourceCountsType {
-    pub servers: u32,
-    pub players: u32
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct FetchedServer {
     pub enhancedHostSupport: Option<bool>,
     #[serde(rename = "ignore_icon")]
@@ -16,9 +11,10 @@ pub struct FetchedServer {
     pub server: Option<String>,
     pub vars: Vars,
     pub version: Option<u32>,
+    pub clients: Option<u32>
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Server {
     pub svMaxclients: Option<u32>,
     pub clients: Option<u32>,
@@ -33,7 +29,7 @@ pub struct Server {
     pub connectEndPoints: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Vars {
     pub Discord: Option<String>,
     pub Owner: Option<String>,
@@ -56,8 +52,38 @@ pub struct Vars {
     pub activitypubFeed: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Servers {
-    #[serde(flatten)] // Use flatten to handle dynamic keys
+    #[serde(flatten)]
     pub servers: HashMap<String, Server>,
+}
+
+impl Default for Servers {
+    fn default() -> Self {
+        Self {
+            servers: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResourceData {
+    pub servers: Vec<String>,
+    pub players: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FetchedServers {
+    #[serde(flatten)] 
+    pub servers: HashMap<String, FetchedServer>,
+    pub resources: HashMap<String, ResourceData>,
+}
+
+impl Default for FetchedServers {
+    fn default() -> Self {
+        Self {
+            servers: HashMap::new(),
+            resources: HashMap::new(),
+        }
+    }
 }
